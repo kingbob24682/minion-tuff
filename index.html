@@ -1,149 +1,197 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Minion Banana Run 🍌</title>
-<style>
-body { margin:0; font-family:sans-serif; text-align:center; }
-canvas { background:#fff; display:block; margin:auto; border:2px solid black; touch-action:none; }
-#menu { margin:20px; }
-button { margin:5px; padding:10px; font-size:16px; }
-#mobile-controls { display:none; margin-top:10px; }
-#mobile-controls button { font-size:24px; width:100px; height:50px; }
-</style>
-</head>
-<body>
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using System.Collections;
+using System.Collections.Generic;
 
-<h1>Minion Banana Run 🍌</h1>
+public class BananaDashGame : MonoBehaviour
+{
+    // ================= PLAYER =================
+    public Transform player;
+    Rigidbody rb;
+    CapsuleCollider col;
 
-<div id="menu">
-  <p>Select Skin:</p>
-  <button onclick="selectSkin('blue')">Blue Minion</button>
-  <button onclick="selectSkin('purple')">Purple Minion</button>
-  <button onclick="selectSkin('yellow')">Yellow Minion</button>
-  <p>Select Difficulty:</p>
-  <button onclick="startGame('noob')">Noob (Easy)</button>
-  <button onclick="startGame('classic')">Classic</button>
-  <button onclick="startGame('hard')">Hard</button>
-</div>
+    public float forwardSpeed = 10f;
+    public float laneDistance = 2.5f;
+    public float jumpForce = 7f;
+    public float slideTime = 0.7f;
 
-<canvas id="gameCanvas" width="600" height="400" style="display:none;"></canvas>
+    int lane = 1; // 0 left, 1 middle, 2 right
+    bool grounded = true;
+    bool sliding = false;
 
-<div id="mobile-controls">
-  <button id="leftBtn">⬅️</button>
-  <button id="rightBtn">➡️</button>
-</div>
+    // ================= INPUT =================
+    Vector2 touchStart;
 
-<script>
-// =====================
-// Setup Canvas
-// =====================
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+    // ================= SPAWNING =================
+    public GameObject obstaclePrefab;
+    public GameObject bananaPrefab;
+    public float spawnDistance = 40f;
+    public float spawnRate = 2f;
+    float spawnTimer;
 
-let minionImg = new Image();
-let minionColor = "blue"; // default skin
-let minion = {x:275, y:340, w:50, h:60};
-let bananas = [];
-let obstacles = [];
-let score = 0;
-let speed = 5;
-let spawnRate = 0.03;
-let left=false, right=false;
-let gameRunning = false;
+    // ================= POOLING =================
+    List<GameObject> obstaclePool = new List<GameObject>();
+    List<GameObject> bananaPool = new List<GameObject>();
+    int poolSize = 20;
 
-// =====================
-// Skins
-// =====================
-function selectSkin(color){
-  minionColor = color;
-  // placeholder images: you can replace these URLs with real minion PNGs
-  if(color==="blue") minionImg.src = "https://i.imgur.com/EpV5Q7k.png";
-  else if(color==="purple") minionImg.src = "https://i.imgur.com/Yz0b9fj.png";
-  else if(color==="yellow") minionImg.src = "https://i.imgur.com/BmBq1nY.png";
-}
+    // ================= SCORE =================
+    int score;
+    int bananas;
 
-// =====================
-// Difficulty
-// =====================
-function startGame(mode){
-  document.getElementById("menu").style.display="none";
-  canvas.style.display="block";
-  document.getElementById("mobile-controls").style.display="block";
-  if(mode==="noob"){ speed=3; spawnRate=0.02; }
-  else if(mode==="classic"){ speed=5; spawnRate=0.03; }
-  else if(mode==="hard"){ speed=8; spawnRate=0.05; }
-  gameRunning = true;
-  gameLoop();
-}
+    // ================= UI =================
+    GUIStyle style;
 
-// =====================
-// Controls
-// =====================
-document.addEventListener("keydown", e=>{ if(e.key==="ArrowLeft") left=true; if(e.key==="ArrowRight") right=true; });
-document.addEventListener("keyup", e=>{ if(e.key==="ArrowLeft") left=false; if(e.key==="ArrowRight") right=false; });
+    void Awake()
+    {
+        rb = player.GetComponent<Rigidbody>();
+        col = player.GetComponent<CapsuleCollider>();
 
-// Mobile buttons
-document.getElementById("leftBtn").addEventListener("touchstart", ()=>left=true);
-document.getElementById("leftBtn").addEventListener("touchend", ()=>left=false);
-document.getElementById("rightBtn").addEventListener("touchstart", ()=>right=true);
-document.getElementById("rightBtn").addEventListener("touchend", ()=>right=false);
+        rb.constraints = RigidbodyConstraints.FreezeRotation;
 
-// =====================
-// Game Loop
-// =====================
-function gameLoop(){
-  if(!gameRunning) return;
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+        for (int i = 0; i < poolSize; i++)
+        {
+            GameObject o = Instantiate(obstaclePrefab);
+            o.SetActive(false);
+            obstaclePool.Add(o);
 
-  // Move minion
-  if(left && minion.x>0) minion.x -= 7;
-  if(right && minion.x<canvas.width-minion.w) minion.x += 7;
+            GameObject b = Instantiate(bananaPrefab);
+            b.SetActive(false);
+            bananaPool.Add(b);
+        }
 
-  // Draw minion
-  ctx.drawImage(minionImg, minion.x, minion.y, minion.w, minion.h);
-
-  // Spawn bananas
-  if(Math.random() < 0.02) bananas.push({x: Math.random()*570, y:0, w:30, h:40});
-  // Spawn obstacles
-  if(Math.random() < spawnRate) obstacles.push({x: Math.random()*550, y:0, w:50, h:50});
-
-  // Draw bananas
-  ctx.fillStyle="yellow";
-  for(let i=bananas.length-1;i>=0;i--){
-    bananas[i].y += speed;
-    ctx.fillRect(bananas[i].x, bananas[i].y, bananas[i].w, bananas[i].h);
-    if(bananas[i].y>canvas.height) bananas.splice(i,1);
-    // Collision
-    if(minion.x<bananas[i].x+bananas[i].w && minion.x+minion.w>bananas[i].x &&
-       minion.y<bananas[i].y+bananas[i].h && minion.h+minion.y>bananas[i].y){
-      score++;
-      bananas.splice(i,1);
+        style = new GUIStyle();
+        style.fontSize = 32;
+        style.normal.textColor = Color.white;
     }
-  }
 
-  // Draw obstacles
-  ctx.fillStyle="red";
-  for(let i=obstacles.length-1;i>=0;i--){
-    obstacles[i].y += speed;
-    ctx.fillRect(obstacles[i].x, obstacles[i].y, obstacles[i].w, obstacles[i].h);
-    if(obstacles[i].y>canvas.height) obstacles.splice(i,1);
-    // Collision
-    if(minion.x<obstacles[i].x+obstacles[i].w && minion.x+minion.w>obstacles[i].x &&
-       minion.y<obstacles[i].y+obstacles[i].h && minion.h+minion.y>obstacles[i].y){
-      alert("Game Over! Your score: "+score);
-      location.reload();
+    void Update()
+    {
+        RunForward();
+        HandleSwipe();
+        MoveLane();
+        SpawnObjects();
+        UpdateScore();
     }
-  }
 
-  // Score
-  ctx.fillStyle="black";
-  ctx.font="20px Arial";
-  ctx.fillText("Bananas: "+score, 10,30);
+    // ================= MOVEMENT =================
+    void RunForward()
+    {
+        player.Translate(Vector3.forward * forwardSpeed * Time.deltaTime);
+    }
 
-  requestAnimationFrame(gameLoop);
+    void MoveLane()
+    {
+        Vector3 target = new Vector3((lane - 1) * laneDistance, player.position.y, player.position.z);
+        player.position = Vector3.Lerp(player.position, target, Time.deltaTime * 10f);
+    }
+
+    // ================= INPUT =================
+    void HandleSwipe()
+    {
+        if (Input.touchCount == 0) return;
+        Touch t = Input.GetTouch(0);
+
+        if (t.phase == TouchPhase.Began)
+            touchStart = t.position;
+
+        if (t.phase == TouchPhase.Ended)
+        {
+            Vector2 delta = t.position - touchStart;
+
+            if (Mathf.Abs(delta.x) > Mathf.Abs(delta.y))
+            {
+                lane = Mathf.Clamp(lane + (delta.x > 0 ? 1 : -1), 0, 2);
+            }
+            else
+            {
+                if (delta.y > 0 && grounded)
+                    Jump();
+                else if (!sliding)
+                    StartCoroutine(Slide());
+            }
+        }
+    }
+
+    void Jump()
+    {
+        grounded = false;
+        rb.velocity = Vector3.up * jumpForce;
+    }
+
+    IEnumerator Slide()
+    {
+        sliding = true;
+        col.height = 1f;
+        yield return new WaitForSeconds(slideTime);
+        col.height = 2f;
+        sliding = false;
+    }
+
+    // ================= SPAWNING =================
+    void SpawnObjects()
+    {
+        spawnTimer += Time.deltaTime;
+        if (spawnTimer < spawnRate) return;
+        spawnTimer = 0;
+
+        int spawnLane = Random.Range(0, 3);
+        Vector3 pos = new Vector3((spawnLane - 1) * laneDistance, 0, player.position.z + spawnDistance);
+
+        if (Random.value > 0.4f)
+            ActivateFromPool(obstaclePool, pos);
+        else
+            ActivateFromPool(bananaPool, pos + Vector3.up);
+    }
+
+    void ActivateFromPool(List<GameObject> pool, Vector3 pos)
+    {
+        foreach (GameObject obj in pool)
+        {
+            if (!obj.activeInHierarchy)
+            {
+                obj.transform.position = pos;
+                obj.SetActive(true);
+                return;
+            }
+        }
+    }
+
+    // ================= COLLISIONS =================
+    void OnCollisionEnter(Collision c)
+    {
+        if (c.gameObject.CompareTag("Ground"))
+            grounded = true;
+
+        if (c.gameObject.CompareTag("Obstacle"))
+            Restart();
+    }
+
+    void OnTriggerEnter(Collider c)
+    {
+        if (c.CompareTag("Banana"))
+        {
+            bananas++;
+            c.gameObject.SetActive(false);
+        }
+    }
+
+    // ================= SCORE =================
+    void UpdateScore()
+    {
+        score = Mathf.Max(score, (int)player.position.z);
+    }
+
+    // ================= GAME =================
+    void Restart()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    void OnGUI()
+    {
+        GUI.Label(new Rect(20, 20, 300, 40), "Score: " + score, style);
+        GUI.Label(new Rect(20, 60, 300, 40), "Bananas: " + bananas, style);
+    }
 }
-</script>
 
-</body>
-</html>
+  
