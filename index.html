@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Minion Banana Run 🍌</title>
+    <style>
+        body { margin: 0; text-align: center; }
+        canvas { background: #ffffff; display: block; margin: 20px auto; border: 2px solid black; }
+    </style>
+</head>
+<body>
+<h1>Minion Banana Run 🍌</h1>
+<canvas id="gameCanvas" width="600" height="400"></canvas>
+<p>Use Left/Right arrows to move. Avoid obstacles and collect bananas!</p>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let minion = {x: 275, y: 340, w: 50, h: 60};
+let bananas = [];
+let obstacles = [];
+let score = 0;
+let speed = 5;
+let left=false, right=false;
+
+// Handle key presses
+document.addEventListener("keydown", e => { if(e.key === "ArrowLeft") left=true; if(e.key === "ArrowRight") right=true; });
+document.addEventListener("keyup", e => { if(e.key === "ArrowLeft") left=false; if(e.key === "ArrowRight") right=false; });
+
+// Game loop
+function gameLoop() {
+    ctx.clearRect(0,0,600,400);
+
+    // Move minion
+    if(left && minion.x>0) minion.x -= 7;
+    if(right && minion.x<canvas.width - minion.w) minion.x += 7;
+
+    // Draw minion
+    ctx.fillStyle = "blue";
+    ctx.fillRect(minion.x, minion.y, minion.w, minion.h);
+
+    // Spawn bananas
+    if(Math.random() < 0.02) bananas.push({x: Math.random()*570, y: 0, w:30, h:40});
+    // Spawn obstacles
+    if(Math.random() < 0.03) obstacles.push({x: Math.random()*550, y:0, w:50, h:50});
+
+    // Move and draw bananas
+    ctx.fillStyle = "yellow";
+    for(let i=bananas.length-1; i>=0; i--){
+        bananas[i].y += speed;
+        ctx.fillRect(bananas[i].x, bananas[i].y, bananas[i].w, bananas[i].h);
+        if(bananas[i].y > canvas.height) bananas.splice(i,1);
+        // Collision
+        if(minion.x < bananas[i].x + bananas[i].w && minion.x + minion.w > bananas[i].x &&
+           minion.y < bananas[i].y + bananas[i].h && minion.h + minion.y > bananas[i].y){
+            score++;
+            bananas.splice(i,1);
+        }
+    }
+
+    // Move and draw obstacles
+    ctx.fillStyle = "red";
+    for(let i=obstacles.length-1; i>=0; i--){
+        obstacles[i].y += speed;
+        ctx.fillRect(obstacles[i].x, obstacles[i].y, obstacles[i].w, obstacles[i].h);
+        if(obstacles[i].y > canvas.height) obstacles.splice(i,1);
+        // Collision
+        if(minion.x < obstacles[i].x + obstacles[i].w && minion.x + minion.w > obstacles[i].x &&
+           minion.y < obstacles[i].y + obstacles[i].h && minion.h + minion.y > obstacles[i].y){
+            alert("Game Over! Your score: " + score);
+            document.location.reload();
+        }
+    }
+
+    // Draw score
+    ctx.fillStyle = "black";
+    ctx.font = "20px Arial";
+    ctx.fillText("Bananas: " + score, 10, 30);
+
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
