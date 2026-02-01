@@ -13,11 +13,11 @@ public class BananaDashGame : MonoBehaviour
     public float forwardSpeed = 10f;
     public float laneDistance = 2.5f;
     public float jumpForce = 7f;
-    public float slideTime = 0.7f;
+    public float slideDuration = 0.7f;
 
-    int lane = 1; // 0 left, 1 middle, 2 right
-    bool grounded = true;
-    bool sliding = false;
+    int currentLane = 1; // 0 = left, 1 = middle, 2 = right
+    bool isGrounded = true;
+    bool isSliding = false;
 
     // ================= INPUT =================
     Vector2 touchStart;
@@ -32,20 +32,19 @@ public class BananaDashGame : MonoBehaviour
     // ================= POOLING =================
     List<GameObject> obstaclePool = new List<GameObject>();
     List<GameObject> bananaPool = new List<GameObject>();
-    int poolSize = 20;
+    int poolSize = 25;
 
     // ================= SCORE =================
     int score;
     int bananas;
 
     // ================= UI =================
-    GUIStyle style;
+    GUIStyle guiStyle;
 
     void Awake()
     {
         rb = player.GetComponent<Rigidbody>();
         col = player.GetComponent<CapsuleCollider>();
-
         rb.constraints = RigidbodyConstraints.FreezeRotation;
 
         for (int i = 0; i < poolSize; i++)
@@ -59,54 +58,67 @@ public class BananaDashGame : MonoBehaviour
             bananaPool.Add(b);
         }
 
-        style = new GUIStyle();
-        style.fontSize = 32;
-        style.normal.textColor = Color.white;
+        guiStyle = new GUIStyle();
+        guiStyle.fontSize = 32;
+        guiStyle.normal.textColor = Color.white;
     }
 
     void Update()
     {
-        RunForward();
-        HandleSwipe();
+        MoveForward();
+        HandleSwipeInput();
         MoveLane();
-        SpawnObjects();
+        SpawnLoop();
         UpdateScore();
     }
 
     // ================= MOVEMENT =================
-    void RunForward()
+    void MoveForward()
     {
         player.Translate(Vector3.forward * forwardSpeed * Time.deltaTime);
     }
 
     void MoveLane()
     {
-        Vector3 target = new Vector3((lane - 1) * laneDistance, player.position.y, player.position.z);
-        player.position = Vector3.Lerp(player.position, target, Time.deltaTime * 10f);
+        Vector3 target = new Vector3(
+            (currentLane - 1) * laneDistance,
+            player.position.y,
+            player.position.z
+        );
+
+        player.position = Vector3.Lerp(
+            player.position,
+            target,
+            Time.deltaTime * 10f
+        );
     }
 
     // ================= INPUT =================
-    void HandleSwipe()
+    void HandleSwipeInput()
     {
         if (Input.touchCount == 0) return;
-        Touch t = Input.GetTouch(0);
+        Touch touch = Input.GetTouch(0);
 
-        if (t.phase == TouchPhase.Began)
-            touchStart = t.position;
+        if (touch.phase == TouchPhase.Began)
+            touchStart = touch.position;
 
-        if (t.phase == TouchPhase.Ended)
+        if (touch.phase == TouchPhase.Ended)
         {
-            Vector2 delta = t.position - touchStart;
+            Vector2 delta = touch.position - touchStart;
 
             if (Mathf.Abs(delta.x) > Mathf.Abs(delta.y))
             {
-                lane = Mathf.Clamp(lane + (delta.x > 0 ? 1 : -1), 0, 2);
+                currentLane = Mathf.Clamp(
+                    currentLane + (delta.x > 0 ? 1 : -1),
+                    0,
+                    2
+                );
             }
             else
             {
-                if (delta.y > 0 && grounded)
+                if (delta.y > 0 && isGrounded)
                     Jump();
-                else if (!sliding)
+                else if (!isSliding)
                     StartCoroutine(Slide());
             }
         }
@@ -114,28 +126,32 @@ public class BananaDashGame : MonoBehaviour
 
     void Jump()
     {
-        grounded = false;
+        isGrounded = false;
         rb.velocity = Vector3.up * jumpForce;
     }
 
     IEnumerator Slide()
     {
-        sliding = true;
+        isSliding = true;
         col.height = 1f;
-        yield return new WaitForSeconds(slideTime);
+        yield return new WaitForSeconds(slideDuration);
         col.height = 2f;
-        sliding = false;
+        isSliding = false;
     }
 
     // ================= SPAWNING =================
-    void SpawnObjects()
+    void SpawnLoop()
     {
         spawnTimer += Time.deltaTime;
         if (spawnTimer < spawnRate) return;
-        spawnTimer = 0;
+        spawnTimer = 0f;
 
-        int spawnLane = Random.Range(0, 3);
-        Vector3 pos = new Vector3((spawnLane - 1) * laneDistance, 0, player.position.z + spawnDistance);
+        int lane = Random.Range(0, 3);
+        Vector3 pos = new Vector3(
+            (lane - 1) * laneDistance,
+            0,
+            player.position.z + spawnDistance
+        );
 
         if (Random.value > 0.4f)
             ActivateFromPool(obstaclePool, pos);
@@ -157,21 +173,21 @@ public class BananaDashGame : MonoBehaviour
     }
 
     // ================= COLLISIONS =================
-    void OnCollisionEnter(Collision c)
+    void OnCollisionEnter(Collision collision)
     {
-        if (c.gameObject.CompareTag("Ground"))
-            grounded = true;
+        if (collision.gameObject.CompareTag("Ground"))
+            isGrounded = true;
 
-        if (c.gameObject.CompareTag("Obstacle"))
-            Restart();
+        if (collision.gameObject.CompareTag("Obstacle"))
+            RestartGame();
     }
 
-    void OnTriggerEnter(Collider c)
+    void OnTriggerEnter(Collider other)
     {
-        if (c.CompareTag("Banana"))
+        if (other.CompareTag("Banana"))
         {
             bananas++;
-            c.gameObject.SetActive(false);
+            other.gameObject.SetActive(false);
         }
     }
 
@@ -182,16 +198,14 @@ public class BananaDashGame : MonoBehaviour
     }
 
     // ================= GAME =================
-    void Restart()
+    void RestartGame()
     {
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
     void OnGUI()
     {
-        GUI.Label(new Rect(20, 20, 300, 40), "Score: " + score, style);
-        GUI.Label(new Rect(20, 60, 300, 40), "Bananas: " + bananas, style);
+        GUI.Label(new Rect(20, 20, 300, 40), "Score: " + score, guiStyle);
+        GUI.Label(new Rect(20, 60, 300, 40), "Bananas: " + bananas, guiStyle);
     }
 }
-
-  
